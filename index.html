@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>小圆甜</title>
+<title>小圆甜饼</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui}
 body{padding:16px;background:#f5f7fa;color:#222;max-width:720px;margin:0 auto}
@@ -15,16 +15,17 @@ input[type="file"]{width:100%;margin:8px 0}
 .preview-item img{width:100%;display:block}
 button{padding:10px 16px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:15px}
 button.del{background:#dc3545}
+button:disabled{background:#94a3b8}
 button:active{opacity:0.85}
 .tip{font-size:13px;color:#d03838;margin:6px 0}
+.progress{margin:8px 0;font-weight:bold}
 </style>
 </head>
 <body>
 <div class="card">
-<h2>批量图片圆角</h2>
-<p class="tip">⚠️安卓：弹窗选择【文件】进入文件管理器，长按多选图片；不要直接点相册</p>
+<h2>图片圆角饼干制作</h2>
+<p class="tip">弹窗选择【文件】进入文件管理器，长按多选图片；不要直接点相册</p>
 <p style="font-size:14px;color:#555;margin:6px 0">图片全部本机运算，不上传网络；可分多次添加图片</p>
-<!-- accept="" 不限制类型，唤起完整文件选择器 -->
 <input type="file" id="fileInput" multiple />
 <div class="row">
 <label>圆角半径：<span id="rVal">30</span>px</label>
@@ -33,6 +34,7 @@ button:active{opacity:0.85}
 <div class="row">
 <label><input type="checkbox" id="transparentBg"> 圆角角落透明(PNG)</label>
 </div>
+<div class="progress" id="progressText">就绪</div>
 <div class="row">
 <button id="processBtn">处理全部并下载</button>
 <button class="del" id="clearBtn">清空全部图片</button>
@@ -52,6 +54,7 @@ const processBtn = document.getElementById('processBtn');
 const clearBtn = document.getElementById('clearBtn');
 const previewBox = document.getElementById('previewBox');
 const countText = document.getElementById('countText');
+const progressText = document.getElementById('progressText');
 const dpr = window.devicePixelRatio || 1;
 
 let fileList = [];
@@ -67,12 +70,15 @@ radiusSlider.addEventListener('input',()=>{
 
 fileInput.addEventListener('change',e=>{
   const rawFiles = Array.from(e.target.files);
-  // 过滤，只保留图片类型
   const newFiles = rawFiles.filter(f=>f.type.startsWith("image/"));
   if(newFiles.length < rawFiles.length){
     alert("跳过了非图片文件");
   }
-  fileList = fileList.concat(newFiles);
+  //简单去重
+  for(const f of newFiles){
+    const exist = fileList.some(x=>x.name===f.name&&x.size===f.size);
+    if(!exist) fileList.push(f);
+  }
   e.target.value = "";
   updateCount();
   renderPreview();
@@ -82,6 +88,7 @@ clearBtn.addEventListener('click',()=>{
     fileList = [];
     previewBox.innerHTML = '';
     updateCount();
+    progressText.textContent="就绪";
 })
 
 function renderPreview(){
@@ -127,15 +134,26 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// 增加延时，安卓浏览器需要等待下载弹窗响应
+function sleep(ms){
+  return new Promise(resolve=>setTimeout(resolve,ms));
+}
+
 processBtn.addEventListener('click',async ()=>{
   if(fileList.length===0){
     alert("请先选择图片！");
     return;
   }
+  processBtn.disabled=true;
   const radius = Number(radiusSlider.value);
-  for(const f of fileList){
-    await processOne(f,radius, transparentBg.checked);
+  const total = fileList.length;
+  for(let i=0;i<total;i++){
+    progressText.textContent = `正在处理 ${i+1} / ${total}`;
+    await processOne(fileList[i],radius, transparentBg.checked);
+    await sleep(650); //安卓关键延时，给下载留出时间
   }
+  progressText.textContent = `全部完成，共${total}张`;
+  processBtn.disabled=false;
 })
 
 function processOne(file,radius,useTransparent){
@@ -157,7 +175,7 @@ function processOne(file,radius,useTransparent){
         roundRect(ctx,0,0,img.width,img.height,radius);
         ctx.clip();
         ctx.drawImage(img,0,0);
-        const blob = dataURLtoBlob(canvas.toDataURL('image/png'));
+        const blob = dataURLtoBlob(canvas.toDataURL("image/png"));
         const a = document.createElement('a');
         a.href=URL.createObjectURL(blob);
         a.download=`round_${file.name.replace(/\.\w+$/,'')}.png`;
@@ -186,4 +204,5 @@ function dataURLtoBlob(dataurl) {
 </script>
 </body>
 </html>
+
 
