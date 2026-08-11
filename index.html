@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>批量图片圆角工具</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui}
+body{padding:16px;background:#f5f7fa;color:#222;max-width:720px;margin:0 auto}
+.card{background:#fff;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px #00000018}
+input[type="file"]{width:100%;margin:8px 0}
+.row{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0;align-items:center}
+.preview-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-top:12px}
+.preview-item{border:1px solid #ddd;border-radius:8px;overflow:hidden;background:#eee}
+.preview-item img{width:100%;display:block}
+button{padding:10px 16px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-size:15px}
+button:active{opacity:0.85}
+.tip{font-size:13px;color:#d03838;margin:6px 0}
+</style>
+</head>
+<body>
+<div class="card">
+<h2>批量图片圆角（本地离线）</h2>
+<p class="tip">⚠️请用系统浏览器打开，不要用微信内置浏览器</p>
+<p style="font-size:14px;color:#555;margin:6px 0">图片完全本机运算，不会上传网络</p>
+<input type="file" id="fileInput" accept="image/*" multiple />
+<div class="row">
+<label>圆角半径：<span id="rVal">30</span>px</label>
+<input type="range" id="radiusSlider" min="0" max="120" value="30" style="flex:1"/>
+</div>
+<div class="row">
+<label><input type="checkbox" id="transparentBg"> 圆角角落透明(PNG)</label>
+</div>
+<div class="row">
+<button id="processBtn">处理全部并下载</button>
+</div>
+</div>
+<div class="card">
+<h3>预览</h3>
+<div class="preview-wrap" id="previewBox"></div>
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const radiusSlider = document.getElementById('radiusSlider');
+const rVal = document.getElementById('rVal');
+const transparentBg = document.getElementById('transparentBg');
+const processBtn = document.getElementById('processBtn');
+const previewBox = document.getElementById('previewBox');
+const dpr = window.devicePixelRatio || 1;
+
+let fileList = [];
+
+radiusSlider.addEventListener('input',()=>{
+  rVal.textContent = radiusSlider.value;
+  renderPreview();
+})
+
+fileInput.addEventListener('change',e=>{
+  fileList = Array.from(e.target.files);
+  renderPreview();
+})
+
+function renderPreview(){
+  previewBox.innerHTML = '';
+  const radius = Number(radiusSlider.value);
+  fileList.forEach(f=>{
+    const reader = new FileReader();
+    reader.onload=ev=>{
+      const div = document.createElement('div');
+      div.className='preview-item';
+      const img = new Image();
+      img.src = ev.target.result;
+      img.onload=()=>{
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width * dpr;
+        canvas.height = img.height * dpr;
+        ctx.scale(dpr,dpr);
+        if(!transparentBg.checked){
+          ctx.fillStyle="#ffffff";
+          ctx.fillRect(0,0,img.width,img.height);
+        }
+        roundRect(ctx,0,0,img.width,img.height,radius);
+        ctx.clip();
+        ctx.drawImage(img,0,0);
+        const previewImg = document.createElement('img');
+        previewImg.src = canvas.toDataURL("image/png");
+        div.appendChild(previewImg);
+        previewBox.appendChild(div);
+      }
+    }
+    reader.readAsDataURL(f);
+  })
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+processBtn.addEventListener('click',async ()=>{
+  const radius = Number(radiusSlider.value);
+  for(const f of fileList){
+    await processOne(f,radius, transparentBg.checked);
+  }
+})
+
+function processOne(file,radius,useTransparent){
+  return new Promise(resolve=>{
+    const reader = new FileReader();
+    reader.onload=ev=>{
+      const img = new Image();
+      img.src = ev.target.result;
+      img.onload=()=>{
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width * dpr;
+        canvas.height = img.height * dpr;
+        ctx.scale(dpr,dpr);
+        if(!useTransparent){
+          ctx.fillStyle="#ffffff";
+          ctx.fillRect(0,0,img.width,img.height);
+        }
+        roundRect(ctx,0,0,img.width,img.height,radius);
+        ctx.clip();
+        ctx.drawImage(img,0,0);
+        const blob = dataURLtoBlob(canvas.toDataURL('image/png'));
+        const a = document.createElement('a');
+        a.href=URL.createObjectURL(blob);
+        a.download=`round_${file.name.replace(/\.\w+$/,'')}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+        resolve();
+      }
+    }
+    reader.readAsDataURL(file);
+  })
+}
+
+function dataURLtoBlob(dataurl) {
+  let arr = dataurl.split(',');
+  let mime = arr[0].match(/:(.*?);/)[1];
+  let bstr = atob(arr[1]);
+  let n = bstr.length;
+  let u8arr = new Uint8Array(n);
+  while(n--){
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], {type:mime});
+}
+</script>
+</body>
+</html>
